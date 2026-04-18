@@ -15,6 +15,10 @@
 - `/qwen:adversarial-review` 用于可引导的质疑性审查
 - `/qwen:rescue`、`/qwen:status`、`/qwen:result` 和 `/qwen:cancel` 用于任务委派和后台任务管理
 
+## 架构图
+
+![架构图](./docs/qwen-plugin-cc.jpg)
+
 ## 环境要求
 
 - **阿里云百炼 API Key 或 Qwen Code 账号**

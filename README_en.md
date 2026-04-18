@@ -16,6 +16,10 @@ they already have.
 - `/qwen:adversarial-review` for a steerable challenge review
 - `/qwen:rescue`, `/qwen:status`, `/qwen:result`, and `/qwen:cancel` to delegate work and manage background jobs
 
+## Architecture
+
+![Architecture](./docs/qwen-plugin-cc.jpg)
+
 ## Requirements
 
 - Alibaba Cloud Bailian API Key or Qwen Code account.
