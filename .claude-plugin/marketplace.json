@@ -1,0 +1,21 @@
+{
+  "name": "turato-qwen-code",
+  "owner": {
+    "name": "turato"
+  },
+  "metadata": {
+    "description": "Qwen Code plugins to use in Claude Code for delegation and code review.",
+    "version": "2.0.4"
+  },
+  "plugins": [
+    {
+      "name": "qwen",
+      "description": "Use Qwen Code from Claude Code to review code or delegate tasks.",
+      "version": "2.0.4",
+      "author": {
+        "name": "turato"
+      },
+      "source": "./plugins/qwen"
+    }
+  ]
+}

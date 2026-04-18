@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "useUnknownInCatchVariables": false,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": [
+    "plugins/qwen/scripts/lib/acp-client.mjs",
+    "plugins/qwen/scripts/lib/qwen.mjs",
+    "plugins/qwen/scripts/lib/acp-server-handlers.mjs",
+    "plugins/qwen/scripts/lib/fs.mjs",
+    "plugins/qwen/scripts/lib/process.mjs",
+    "plugins/qwen/scripts/lib/acp-protocol.d.ts"
+  ]
+}

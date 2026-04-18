@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.generated/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude/Qwen local settings
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# State files (temporary)
+/tmp/qwen-companion/
+
+# Environment variables
+.env
+.env.*
+.env.local
+.env.*.local
+
+# Secret/credential files
+*.key
+*.pem
+*.p12
+*secret*
+*credential*
+
+# Settings files that may contain auth info
+**/settings.json
+qwen-settings.json

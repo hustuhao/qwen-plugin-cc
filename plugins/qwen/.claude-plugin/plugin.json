@@ -1,0 +1,8 @@
+{
+  "name": "qwen",
+  "version": "2.0.4",
+  "description": "Use Qwen Code from Claude Code to review code or delegate tasks.",
+  "author": {
+    "name": "turato"
+  }
+}
