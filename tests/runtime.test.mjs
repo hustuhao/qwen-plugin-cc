@@ -957,7 +957,7 @@ test("task falls back to direct ACP startup when a saved shared broker endpoint 
     endpoint: "unix:/tmp/qwen-plugin-missing-broker.sock"
   });
 
-  const result = run("node", [SCRIPT, "task", "challenge the current design"], {
+  const result = run("node", [SCRIPT, "task", "--no-start-shared", "challenge the current design"], {
     cwd: repo,
     env: buildEnv(binDir)
   });
