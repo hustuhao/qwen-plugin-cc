@@ -210,6 +210,67 @@ test("task reports the actual Qwen auth error when the run is rejected", () => {
   assert.match(result.stderr, /authentication expired; run qwen login/);
 });
 
+test("task falls back to `qwen -p` headless mode when ACP runtime returns internal error", () => {
+  const repo = makeTempDir();
+  const binDir = makeTempDir();
+  installFakeQwen(binDir, "acp-task-internal-error");
+  initGitRepo(repo);
+  fs.writeFileSync(path.join(repo, "README.md"), "hello\n");
+  run("git", ["add", "README.md"], { cwd: repo });
+  run("git", ["commit", "-m", "init"], { cwd: repo });
+
+  const result = run("node", [SCRIPT, "task", "investigate failing tests"], {
+    cwd: repo,
+    env: buildEnv(binDir)
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Headless mode handled the task via qwen -p/);
+
+  const fakeState = JSON.parse(fs.readFileSync(path.join(binDir, "fake-qwen-state.json"), "utf8"));
+  assert.ok(fakeState.lastHeadlessRun, "expected fake qwen to record a headless run");
+  assert.equal(fakeState.lastHeadlessRun.prompt, "investigate failing tests");
+  assert.equal(fakeState.lastHeadlessRun.approvalMode, "plan");
+});
+
+test("write task headless fallback uses --approval-mode yolo", () => {
+  const repo = makeTempDir();
+  const binDir = makeTempDir();
+  installFakeQwen(binDir, "acp-task-internal-error");
+  initGitRepo(repo);
+  fs.writeFileSync(path.join(repo, "README.md"), "hello\n");
+  run("git", ["add", "README.md"], { cwd: repo });
+  run("git", ["commit", "-m", "init"], { cwd: repo });
+
+  const result = run("node", [SCRIPT, "task", "--write", "fix the bug"], {
+    cwd: repo,
+    env: buildEnv(binDir)
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const fakeState = JSON.parse(fs.readFileSync(path.join(binDir, "fake-qwen-state.json"), "utf8"));
+  assert.equal(fakeState.lastHeadlessRun.approvalMode, "yolo");
+});
+
+test("--no-headless-fallback disables the headless fallback path", () => {
+  const repo = makeTempDir();
+  const binDir = makeTempDir();
+  installFakeQwen(binDir, "acp-task-internal-error");
+  initGitRepo(repo);
+  fs.writeFileSync(path.join(repo, "README.md"), "hello\n");
+  run("git", ["add", "README.md"], { cwd: repo });
+  run("git", ["commit", "-m", "init"], { cwd: repo });
+
+  const result = run("node", [SCRIPT, "task", "--no-headless-fallback", "investigate"], {
+    cwd: repo,
+    env: buildEnv(binDir)
+  });
+
+  const fakeState = JSON.parse(fs.readFileSync(path.join(binDir, "fake-qwen-state.json"), "utf8"));
+  assert.equal(fakeState.lastHeadlessRun ?? null, null, "headless run should not have been invoked");
+  assert.match(result.stdout + result.stderr, /Internal error/i);
+});
+
 test("review accepts the quoted raw argument style for built-in base-branch review", () => {
   const repo = makeTempDir();
   const binDir = makeTempDir();
