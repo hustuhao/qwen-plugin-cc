@@ -86,7 +86,7 @@ test("continue is not exposed as a user-facing command", () => {
 test("rescue command absorbs continue semantics", () => {
   const rescue = read("commands/rescue.md");
   const agent = read("agents/qwen-rescue.md");
-  const readme = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
+  const readme = fs.readFileSync(path.join(ROOT, "README_en.md"), "utf8");
   const runtimeSkill = read("skills/qwen-cli-runtime/SKILL.md");
 
   assert.match(rescue, /The final user-visible response must be Qwen's output verbatim/i);
@@ -199,7 +199,7 @@ test("hooks keep session-end cleanup and stop gating enabled", () => {
 
 test("setup command can offer Qwen install and still points users to qwen login", () => {
   const setup = read("commands/setup.md");
-  const readme = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
+  const readme = fs.readFileSync(path.join(ROOT, "README_en.md"), "utf8");
 
   assert.match(setup, /argument-hint:\s*'\[--enable-review-gate\|--disable-review-gate\]'/);
   assert.match(setup, /AskUserQuestion/);

@@ -326,6 +326,35 @@ if (args[0] === "--acp" && args[1] === "--help") {
   console.log("fake acp help");
   process.exit(0);
 }
+
+function findFlagValue(argList, flagNames) {
+  for (var i = 0; i < argList.length; i++) {
+    if (flagNames.indexOf(argList[i]) !== -1) {
+      return argList[i + 1] || "";
+    }
+  }
+  return null;
+}
+
+var headlessPrompt = findFlagValue(args, ["-p", "--prompt"]);
+if (headlessPrompt !== null) {
+  var headlessState = loadState();
+  headlessState.lastHeadlessRun = {
+    prompt: headlessPrompt,
+    args: args,
+    approvalMode: findFlagValue(args, ["--approval-mode"]),
+    model: findFlagValue(args, ["-m", "--model"])
+  };
+  saveState(headlessState);
+
+  if (BEHAVIOR === "headless-error") {
+    process.stderr.write("headless mode failed\\n");
+    process.exit(1);
+  }
+
+  process.stdout.write("Headless mode handled the task via qwen -p.\\n");
+  process.exit(0);
+}
 if (args[0] === "--acp") {
   const state = loadState();
   state.appServerStarts = (state.appServerStarts || 0) + 1;
@@ -442,6 +471,11 @@ if (args[0] === "--acp") {
             content: { type: "text", text: "I need to inspect the implementation details before I can finalize the adversarial review." }
           }}});
           send({ id: message.id, error: { code: -32000, message: "Internal error" } });
+          break;
+        }
+
+        if (BEHAVIOR === "acp-task-internal-error") {
+          send({ id: message.id, error: { code: -32603, message: "Internal error", data: { details: "ACP runtime failure" } } });
           break;
         }
 

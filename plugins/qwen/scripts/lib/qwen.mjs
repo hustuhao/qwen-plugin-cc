@@ -20,6 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import process from "node:process";
+import { spawn } from "node:child_process";
 
 import { readJsonFile } from "./fs.mjs";
 import { binaryAvailable } from "./process.mjs";
@@ -944,6 +945,121 @@ export async function runAcpPrompt(cwd, options = {}) {
     brokerStartTimeoutMs: options.brokerStartTimeoutMs
   });
 }
+
+export function isAcpInternalErrorSignal(error) {
+  if (!error) return false;
+  const message = error instanceof Error ? error.message : String(error);
+  const rpcCode = error?.rpcCode ?? error?.data?.code ?? null;
+  if (rpcCode === -32603) return true;
+  if (/internal error/i.test(message)) return true;
+  if (/qwen acp exited/i.test(message)) return true;
+  if (/qwen acp connection closed/i.test(message)) return true;
+  if (/qwen acp broker/i.test(message)) return true;
+  return false;
+}
+
+export function shouldFallbackToHeadless(result) {
+  if (!result) return false;
+  if (result.error && isAcpInternalErrorSignal(result.error)) {
+    const accumulated = typeof result.finalMessage === "string" ? result.finalMessage.trim() : "";
+    return !accumulated;
+  }
+  return false;
+}
+
+function describeAcpFailure(error) {
+  if (!error) return "ACP runtime failed without an error message.";
+  const message = error instanceof Error ? error.message : String(error);
+  return message || "ACP runtime failed without an error message.";
+}
+
+export async function runHeadlessPrompt(cwd, options = {}) {
+  const prompt = (options.prompt ?? "").trim();
+  if (!prompt) {
+    throw new Error("A prompt is required for the Qwen headless run.");
+  }
+
+  emitProgress(options.onProgress, "Falling back to Qwen headless mode (`qwen -p`).", "starting");
+
+  const args = ["-p", prompt];
+  if (options.model) {
+    args.push("--model", options.model);
+  }
+  if (options.sandbox === "workspace-write") {
+    args.push("--approval-mode", "yolo");
+  } else {
+    args.push("--approval-mode", "plan");
+  }
+
+  const proc = spawn("qwen", args, {
+    cwd,
+    env: options.env ?? process.env,
+    stdio: ["ignore", "pipe", "pipe"],
+    shell: process.platform === "win32" ? (process.env.SHELL || true) : false,
+    windowsHide: true
+  });
+
+  let stdout = "";
+  let stderr = "";
+  proc.stdout.setEncoding("utf8");
+  proc.stderr.setEncoding("utf8");
+  proc.stdout.on("data", (chunk) => {
+    stdout += chunk;
+  });
+  proc.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+
+  const exitInfo = await new Promise((resolve) => {
+    proc.on("error", (error) => {
+      resolve({ code: null, signal: null, spawnError: error });
+    });
+    proc.on("exit", (code, signal) => {
+      resolve({ code: code ?? 0, signal, spawnError: null });
+    });
+  });
+
+  const transportHistoryEntry = {
+    transport: "headless",
+    endpoint: null,
+    attemptedAt: new Date().toISOString(),
+    fallbackReason: options.fallbackReason ?? null
+  };
+
+  let runError = null;
+  let status = 0;
+  if (exitInfo.spawnError) {
+    runError = exitInfo.spawnError;
+    status = 1;
+  } else if (exitInfo.code !== 0) {
+    const detail = stderr.trim() || `qwen -p exited with code ${exitInfo.code}`;
+    runError = new Error(detail);
+    status = 1;
+  }
+
+  emitProgress(
+    options.onProgress,
+    status === 0 ? "Qwen headless run finished." : "Qwen headless run failed.",
+    status === 0 ? null : "failed"
+  );
+
+  return {
+    status,
+    sessionId: null,
+    transport: "headless",
+    brokerEndpoint: null,
+    fallbackReason: options.fallbackReason ?? null,
+    transportHistory: [...(options.transportHistory ?? []), transportHistoryEntry],
+    promptId: null,
+    finalMessage: stdout,
+    reasoningSummary: [],
+    error: runError,
+    stderr,
+    touchedFiles: []
+  };
+}
+
+export { describeAcpFailure };
 
 export async function findLatestTaskSession(cwd) {
   try {

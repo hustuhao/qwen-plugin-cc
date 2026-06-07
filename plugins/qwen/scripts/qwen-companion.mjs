@@ -10,15 +10,19 @@ import { parseArgs, splitRawArgumentString } from "./lib/args.mjs";
 import {
     buildPersistentTaskSessionName,
     DEFAULT_CONTINUE_PROMPT,
+    describeAcpFailure,
     findLatestTaskSession,
     getQwenAuthStatus,
     getQwenAvailability,
     getSessionRuntimeStatus,
     interruptAcpSession,
+    isAcpInternalErrorSignal,
     parseStructuredOutput,
     readOutputSchema,
     runAcpReview,
-    runAcpPrompt
+    runAcpPrompt,
+    runHeadlessPrompt,
+    shouldFallbackToHeadless
   } from "./lib/qwen.mjs";
 import { readStdinIfPiped } from "./lib/fs.mjs";
 import { collectReviewContext, ensureGitRepository, resolveReviewTarget } from "./lib/git.mjs";
@@ -482,20 +486,54 @@ async function executeTaskRun(request) {
     throw new Error("Provide a prompt, a prompt file, piped stdin, or use --resume-last.");
   }
 
-  const result = await runAcpPrompt(workspaceRoot, {
-    resumeSessionId,
-    prompt: request.prompt,
-    defaultPrompt: resumeSessionId ? DEFAULT_CONTINUE_PROMPT : "",
-    model: request.model,
-    effort: request.effort,
-    sandbox: request.write ? "workspace-write" : "read-only",
-    onProgress: request.onProgress,
-    requireShared: Boolean(request.requireShared),
-    preferShared: !request.preferDirect,
-    startShared: request.startShared !== false,
-    persistSession: true,
-    sessionName: resumeSessionId ? null : buildPersistentTaskSessionName(request.prompt || DEFAULT_CONTINUE_PROMPT)
-  });
+  const allowHeadlessFallback =
+    request.allowHeadlessFallback !== false && !resumeSessionId && Boolean(request.prompt);
+  const sandbox = request.write ? "workspace-write" : "read-only";
+
+  let result;
+  let fallbackReason = null;
+  try {
+    result = await runAcpPrompt(workspaceRoot, {
+      resumeSessionId,
+      prompt: request.prompt,
+      defaultPrompt: resumeSessionId ? DEFAULT_CONTINUE_PROMPT : "",
+      model: request.model,
+      effort: request.effort,
+      sandbox,
+      onProgress: request.onProgress,
+      requireShared: Boolean(request.requireShared),
+      preferShared: !request.preferDirect,
+      startShared: request.startShared !== false,
+      persistSession: true,
+      sessionName: resumeSessionId ? null : buildPersistentTaskSessionName(request.prompt || DEFAULT_CONTINUE_PROMPT)
+    });
+  } catch (error) {
+    if (allowHeadlessFallback && isAcpInternalErrorSignal(error)) {
+      fallbackReason = `ACP runtime failed: ${describeAcpFailure(error)}; fell back to \`qwen -p\` headless mode.`;
+      result = await runHeadlessPrompt(workspaceRoot, {
+        prompt: request.prompt,
+        model: request.model,
+        sandbox,
+        onProgress: request.onProgress,
+        fallbackReason,
+        transportHistory: []
+      });
+    } else {
+      throw error;
+    }
+  }
+
+  if (allowHeadlessFallback && !fallbackReason && shouldFallbackToHeadless(result)) {
+    fallbackReason = `ACP runtime returned an internal error: ${describeAcpFailure(result.error)}; fell back to \`qwen -p\` headless mode.`;
+    result = await runHeadlessPrompt(workspaceRoot, {
+      prompt: request.prompt,
+      model: request.model,
+      sandbox,
+      onProgress: request.onProgress,
+      fallbackReason,
+      transportHistory: result.transportHistory ?? []
+    });
+  }
 
   const rawOutput = typeof result.finalMessage === "string" ? result.finalMessage : "";
   const failureMessage = result.error?.message ?? result.stderr ?? "";
@@ -609,7 +647,7 @@ function buildTaskJob(workspaceRoot, taskMetadata, write) {
   });
 }
 
-function buildTaskRequest({ cwd, model, effort, prompt, write, resumeLast, jobId, requireShared = false, preferDirect = false, startShared = true }) {
+function buildTaskRequest({ cwd, model, effort, prompt, write, resumeLast, jobId, requireShared = false, preferDirect = false, startShared = true, allowHeadlessFallback = true }) {
   return {
     cwd,
     model,
@@ -620,7 +658,8 @@ function buildTaskRequest({ cwd, model, effort, prompt, write, resumeLast, jobId
     jobId,
     requireShared,
     preferDirect,
-    startShared
+    startShared,
+    allowHeadlessFallback
   };
 }
 
@@ -746,7 +785,7 @@ async function handleReview(argv) {
 async function handleTask(argv) {
   const { options, positionals } = parseCommandInput(argv, {
     valueOptions: ["model", "effort", "cwd", "prompt-file"],
-    booleanOptions: ["json", "write", "resume-last", "resume", "fresh", "background", "require-shared", "prefer-direct", "no-start-shared"],
+    booleanOptions: ["json", "write", "resume-last", "resume", "fresh", "background", "require-shared", "prefer-direct", "no-start-shared", "no-headless-fallback"],
     aliasMap: {
       m: "model"
     }
@@ -784,7 +823,8 @@ async function handleTask(argv) {
       jobId: job.id,
       requireShared: Boolean(options["require-shared"]),
       preferDirect: Boolean(options["prefer-direct"]),
-      startShared: !options["no-start-shared"]
+      startShared: !options["no-start-shared"],
+      allowHeadlessFallback: !options["no-headless-fallback"]
     });
     const { payload } = enqueueBackgroundTask(cwd, job, request);
     outputCommandResult(payload, renderQueuedTaskLaunch(payload), options.json);
@@ -806,6 +846,7 @@ async function handleTask(argv) {
         requireShared: Boolean(options["require-shared"]),
         preferDirect: Boolean(options["prefer-direct"]),
         startShared: !options["no-start-shared"],
+        allowHeadlessFallback: !options["no-headless-fallback"],
         onProgress: progress
       }),
     { json: options.json }
